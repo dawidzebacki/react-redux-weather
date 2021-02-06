@@ -1,20 +1,56 @@
-import { IWeatherData, IExtendedForecastData } from "../../api/weatherTypes";
-import {
-  fetchWeatherData,
-  fetchExtendedForecastData,
-} from "../../api/weatherApi";
-import { kelvinToCelcius } from "../../utils/unitConversions";
-import { getNextSevenDays } from "../../utils/dates";
-import { WeatherActionTypes } from "../actionTypes";
-import { setIsInitialState, setIsLoading } from "./appActions";
+import { IExtendedForecastData, IWeatherData } from '../../api/weatherTypes';
+import { fetchExtendedForecastData, fetchWeatherData } from '../../api/weatherApi';
+import { kelvinToCelcius } from '../../utils/unitConversions';
+import { getNextSevenDays } from '../../utils/dates';
+import { WeatherActionTypes } from '../actionTypes';
+import { setIsInitialState, setIsLoading } from './appActions';
+
+export const fetchWeatherStart = () => ({
+  type: WeatherActionTypes.FETCH_WEATHER_START,
+});
+
+export const fetchWeatherSuccess = (weather: IWeatherData, forecast: IExtendedForecastData[]) => ({
+  type: WeatherActionTypes.FETCH_WEATHER_SUCCESS,
+  payload: { weather, forecast },
+});
+
+export const fetchWeatherFail = (error: any) => ({
+  type: WeatherActionTypes.FETCH_WEATHER_ERROR,
+  payload: error,
+});
+
+export const fetchWeatherFromApi = (city: string | { lat: number; lng: number }) => {
+  return (dispatch: any) => {
+    dispatch(setIsLoading(true));
+    dispatch(fetchWeatherStart());
+
+    Promise.all([fetchWeatherData(city), fetchExtendedForecastData(city)])
+      .then((res) => {
+        return Promise.all([res[0].json(), res[1].json()]);
+      })
+      .then((res) => {
+        const { forecast, weather } = transformWeatherData(res);
+        dispatch(fetchWeatherSuccess(weather, forecast));
+        dispatch(setIsInitialState(false));
+        dispatch(setIsLoading(false));
+      })
+      .catch((err) => {
+        dispatch(fetchWeatherFail(err));
+        dispatch(setIsLoading(false));
+      });
+  };
+};
 
 const transformWeatherData = (
-  response: any
-): { weather: IWeatherData; forecast: IExtendedForecastData[] } => {
-  const weather = response[0] as IWeatherData;
+  res: any
+): {
+  weather: IWeatherData;
+  forecast: IExtendedForecastData[];
+} => {
+  const weather = res[0] as IWeatherData;
   const forecast: IExtendedForecastData[] = [];
 
-  weather.weather = response[0].weather[0];
+  weather.weather = res[0].weather[0];
   weather.main = {
     ...weather.main,
     temp: kelvinToCelcius(weather.main.temp),
@@ -26,59 +62,22 @@ const transformWeatherData = (
 
   const next7Days = getNextSevenDays();
 
-  response[1].list.forEach((element: any, index: number) => {
+  res[1].list.forEach((i: any, index: number) => {
     forecast.push({
       day: next7Days[index],
       temp: {
-        temp_max: kelvinToCelcius(element.temp.max),
-        temp_min: kelvinToCelcius(element.temp.min),
+        temp_max: kelvinToCelcius(i.temp.max),
+        temp_min: kelvinToCelcius(i.temp.min),
       },
       weather: {
-        id: element.weather[0].id,
-        main: element.weather[0].main,
+        id: i.weather[0].id,
+        main: i.weather[0].main,
       },
     });
   });
 
-  return { weather, forecast };
-};
-
-export const fetchWeatherStart = () => ({
-  type: WeatherActionTypes.FETCH_WEATHER_START,
-});
-
-export const fetchWeatherSuccess = (
-  weather: IWeatherData,
-  forecast: IExtendedForecastData[]
-) => ({
-  type: WeatherActionTypes.FETCH_WEATHER_SUCCESS,
-  payload: { weather, forecast },
-});
-
-export const fetchWeatherError = (error: any) => ({
-  type: WeatherActionTypes.FETCH_WEATHER_ERROR,
-  payload: error,
-});
-
-export const fetchWeatherFromApi = (
-  city: string | { lat: number; lng: number }
-) => {
-  return (dispatch: any) => {
-    dispatch(setIsLoading(true));
-    dispatch(fetchWeatherStart());
-
-    Promise.all([fetchWeatherData(city), fetchExtendedForecastData(city)])
-      .then((response) => Promise.all([response[0].json, response[1].json()]))
-      .then((response) => {
-        const { weather, forecast } = transformWeatherData(response);
-        dispatch(fetchWeatherSuccess(weather, forecast));
-        dispatch(setIsInitialState(false));
-        dispatch(setIsLoading(false));
-      })
-      .catch((error) => {
-        console.error('error with fetching weather data:', error);
-        dispatch(fetchWeatherError(error));
-        dispatch(setIsLoading(false));
-      })
+  return {
+    weather,
+    forecast,
   };
 };
